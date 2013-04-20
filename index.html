@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+		<title>Pulse</title>
+    <style type="text/css">
+      #graph {
+        width : 500px;
+        height: 200px;
+        margin: 8px auto;
+      }
+    </style>
+	</head>
+
+	<body>
+    <table>
+      <tr>
+        <td>
+          <video autoplay id="webcam"></video>
+          <canvas id="back_canvas" style="display:none"></canvas>
+        </td>
+        <td>
+          <div id="graph"></div>
+        </td>
+      </tr>
+    </table>
+    <button onclick="logSamples()">Log</button>
+
+
+<script type="text/javascript" src="http://humblesoftware.com/static/js/flotr2.min.js"></script>
+<script>
+var nsamples = 32 * 4;
+var fps = 30;
+var nseconds = nsamples / fps;
+
+
+var back_canvas = document.getElementById('back_canvas');
+var back_ctx = back_canvas.getContext('2d');
+var video = document.getElementById('webcam');
+var intensity = new Float64Array(nsamples);
+var samplest = new Float64Array(nsamples);
+var samples = new Float64Array(nsamples);
+var next_intensity = 0;
+var graph_container = document.getElementById('graph');
+
+function blur(f, w) {
+  b = new Float64Array(f.length - w);
+  for (var i = 0; i < b.length; i++) {
+    var sumf = 0, sum = 0;
+    for (var j = i; j < i + w; j++) {
+      sumf += f[j];
+      sum++;
+    }
+    b[i] = sumf / sum;
+  }
+  return b;
+}
+
+// Copy video's current frame to a canvas.
+function process_frame() {
+  // Set the canvas to the dimensions of the video.
+  var w = video.clientWidth;
+  var h = video.clientHeight;
+  if (back_canvas.width != w) back_canvas.width = w;
+  if (back_canvas.height != h) back_canvas.height = h;
+
+  // Draw video frame to the back-buffer.
+  back_ctx.drawImage(video, 0, 0);
+
+  // Get back buffer's image.
+  var bd = back_ctx.getImageData(0, 0, w, h).data;
+
+  // Average the green channel.
+  var sum = 0;
+  for (var i = 0; i < bd.length; i += 4) {
+    sum += bd[i] + bd[i + 1];
+  }
+  intensity[next_intensity] = sum / bd.length * 4 / 256;
+  next_intensity = (next_intensity + 1) % nsamples;
+
+  for (var i = 0; i < nsamples; i++) {
+    samplest[i] = intensity[(i + next_intensity) % nsamples];
+  }
+
+  samples = blur(samplest, 20);
+
+
+  // Draw Graph
+  var data = Array();
+  for (var i = 0; i < samples.length; i += 1) {
+    data.push([i / fps, samples[i]]);
+  }
+  Flotr.draw(graph_container, [ data ], {});
+}
+
+function logSamples() {
+  console.log('Samples:')
+  for (var i = 0; i < samples.length; i++) {
+    console.log(samples[i]);
+  }
+}
+
+setInterval(process_frame, 1000 / fps);
+
+// Choose getMedia depending on browser.
+navigator.getMedia = ( navigator.getUserMedia ||
+                       navigator.webkitGetUserMedia ||
+                       navigator.mozGetUserMedia ||
+                       navigator.msGetUserMedia);
+ 
+navigator.getMedia({video: true},
+  function(stream) {
+    video.src = window.webkitURL.createObjectURL(stream);
+  });
+
+</script>
+
+</body>	
+</html>
