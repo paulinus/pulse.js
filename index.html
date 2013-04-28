@@ -29,7 +29,7 @@
 
 <script type="text/javascript" src="http://humblesoftware.com/static/js/flotr2.min.js"></script>
 <script>
-var nsamples = 32 * 4;
+var nsamples = 32 * 6;
 var fps = 30;
 var nseconds = nsamples / fps;
 
@@ -40,11 +40,14 @@ var video = document.getElementById('webcam');
 var intensity = new Float64Array(nsamples);
 var samplest = new Float64Array(nsamples);
 var samples = new Float64Array(nsamples);
+var samples_low = new Float64Array(nsamples);
+var samples_high = new Float64Array(nsamples);
+var samples_band = new Float64Array(nsamples);
 var next_intensity = 0;
 var graph_container = document.getElementById('graph');
 
-function blur(f, w) {
-  b = new Float64Array(f.length - w);
+function lowpass(f, w) {
+  var b = new Float64Array(f.length - w);
   for (var i = 0; i < b.length; i++) {
     var sumf = 0, sum = 0;
     for (var j = i; j < i + w; j++) {
@@ -54,6 +57,14 @@ function blur(f, w) {
     b[i] = sumf / sum;
   }
   return b;
+}
+
+function highpass(f, w) {
+  var l = lowpass(f, w)
+  for (var i = 0; i < l.length; i++) {
+    l[i] = f[i] - l[i];
+  }
+  return l;
 }
 
 // Copy video's current frame to a canvas.
@@ -73,22 +84,29 @@ function process_frame() {
   // Average the green channel.
   var sum = 0;
   for (var i = 0; i < bd.length; i += 4) {
-    sum += bd[i] + bd[i + 1];
+    sum += bd[i + 1];
   }
-  intensity[next_intensity] = sum / bd.length * 4 / 256;
-  next_intensity = (next_intensity + 1) % nsamples;
+  var x = sum / bd.length / 256;
 
-  for (var i = 0; i < nsamples; i++) {
-    samplest[i] = intensity[(i + next_intensity) % nsamples];
+  var alpha_low = 0.1;
+  var alpha_high = 0.01;
+  var back = nsamples - 1;
+  for (var i = 0; i < back; i++) {
+    samples[i] = samples[i + 1];
+    samples_low[i] = samples_low[i + 1];
+    samples_high[i] = samples_high[i + 1];
+    samples_band[i] = samples_band[i + 1];
   }
-
-  samples = blur(samplest, 20);
+  samples[back] = x;
+  samples_low[back] = alpha_low * x + (1 - alpha_low) * samples_low[back - 1];
+  samples_high[back] = alpha_high * x + (1 - alpha_high) * samples_high[back - 1];
+  samples_band[back] = samples_low[back] - samples_high[back];
 
 
   // Draw Graph
   var data = Array();
   for (var i = 0; i < samples.length; i += 1) {
-    data.push([i / fps, samples[i]]);
+    data.push([i / fps, samples_band[i]]);
   }
   Flotr.draw(graph_container, [ data ], {});
 }
