@@ -21,19 +21,15 @@
         </td>
         <td>
           <div id="graph"></div>
+          <h1 id="freq"></h1>
         </td>
       </tr>
     </table>
-    <button onclick="logSamples()">Log</button>
 
 
 <script type="text/javascript" src="http://humblesoftware.com/static/js/flotr2.min.js"></script>
 <script>
 
-// TODO(pau):
-//   1- find peaks
-//   2- find peaks subpixel fitting a parabola
-//   3- compute median of delays between consecutive peaks
 
 var fps = 30;
 var nseconds = 6;
@@ -72,8 +68,8 @@ function process_frame() {
   }
   var x = sum / bd.length / 256;
 
-  var alpha_low = 0.1;
-  var alpha_high = 0.01;
+  var alpha_low = 0.08;
+  var alpha_high = 0.00005;
   var back = nsamples - 1;
   for (var i = 0; i < back; i++) {
     samples[i] = samples[i + 1];
@@ -86,20 +82,61 @@ function process_frame() {
   samples_high[back] = alpha_high * x + (1 - alpha_high) * samples_high[back - 1];
   samples_band[back] = samples_low[back] - samples_high[back];
 
+  var peaks = find_peaks(samples_band);
+  var freq = freq_from_peaks(peaks);
+
+  document.getElementById('freq').innerHTML = Math.round(freq) + ' ppm';
+
 
   // Draw Graph
   var data = Array();
   for (var i = 0; i < samples.length; i += 1) {
     data.push([i / fps, samples_band[i]]);
   }
-  Flotr.draw(graph_container, [ data ], {});
+  var data_peaks = Array();
+  for (var i = 0; i < peaks.length; ++i) {
+    var j = peaks[i]
+    data_peaks.push([j / fps, samples_band[Math.round(j)]])
+  }
+  Flotr.draw(graph_container, [
+    data,
+    { data : data_peaks, lines : { show : false }, points : { show : true } } ],
+     {});
 }
 
-function logSamples() {
-  console.log('Samples:')
-  for (var i = 0; i < samples.length; i++) {
-    console.log(samples[i]);
+function freq_from_peaks(peaks) {
+  if (peaks.length < 4)
+    return 0;
+
+  var deltas = [];
+  for (var i = 1; i < peaks.length; i++) {
+    deltas.push(peaks[i] - peaks[i - 1]);
   }
+  deltas.sort();
+
+  var m = Math.floor(deltas.length / 2);
+  var delta = deltas[m];
+  var error = (deltas[m + 1] - deltas[m - 1]) / 2;
+
+  if (error / delta > 0.2) // Relative error larger than 10%
+    return 0;
+
+  return fps / delta * 60;
+}
+
+function find_peaks(samples) {
+  var peaks = [];
+  for (var i = 1; i < samples.length - 1; i++) {
+    if (samples[i] > samples[i - 1] && samples[i] > samples[i + 1]) {
+      peaks.push(subpixel_maxima(samples, i));
+    }
+  }
+  return peaks;
+}
+
+function subpixel_maxima(samples, i) {
+  var pm = samples[i - 1], p0 = samples[i], pp = samples[i + 1];
+  return i + (pp - pm) / (4 * p0 - 2 * (pp + pm)); // argmax of a parabola.
 }
 
 setInterval(process_frame, 1000 / fps);
