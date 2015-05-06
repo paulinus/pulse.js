@@ -150,7 +150,7 @@ navigator.getMedia = ( navigator.getUserMedia ||
 navigator.getMedia({video: true},
   function(stream) {
     video.src = window.webkitURL.createObjectURL(stream);
-  });
+  }, function(){});
 
 </script>
 
